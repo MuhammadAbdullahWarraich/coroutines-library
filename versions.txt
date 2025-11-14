@@ -1,0 +1,3 @@
+glibc version: 2.35
+C version: C17
+gcc version: 11.4.0
