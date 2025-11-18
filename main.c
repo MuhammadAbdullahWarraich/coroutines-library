@@ -8,7 +8,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <unistd.h>
-
+#include <poll.h>
+// TODO: make arrays dynamic
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 /* CODING CONVENTIONS
  * 1. function names of functions defined by me will be in snake case
  * 2. attributes of structs & local variables will have camel case
@@ -16,58 +18,79 @@
  * 4. macros will be in all-caps
  * 5. anything prefixed by a underscore(_) should not be used outside the library(you can do this by not adding to header file of library or just add static in case of globals
  * */
+
 struct {
 	ucontext_t** arr;
-	size_t size;
-	size_t capacity;
-	size_t curr;
+	size_t arrSize;
+	size_t arrCapacity;
+	int* awake;// now we will Round-Robbin on the indices of this array
+	size_t awakeSize;
+	size_t awakeCapacity;
+	int* sleeping;
+	struct pollfd* fds;
+	nfds_t nfds;// size of sleeping array == size of fds array == nfds
+	size_t sleepingCapacity;
+	size_t currAwake;
 	ucontext_t* manageEndingContext;
 } Contexts = {
 	NULL,
 	0,
 	10,
-	0,
 	NULL,
+	0,
+	10,
+	NULL,
+	NULL,
+	0,
+	10,
+	0,
+	NULL
 };
-int _PrepFlag = 1;
 int _FromEnd = 0;
 void yield() {
-	assert(!(Contexts.size == 0 && Contexts.curr == 0));// yield should only be called after a call to initialize
-	int oldcurr = Contexts.curr;
-	Contexts.curr = (oldcurr+1) % Contexts.size;
-	if (_FromEnd == 0) swapcontext(Contexts.arr[oldcurr], Contexts.arr[Contexts.curr]);
-	else { _FromEnd = 0; setcontext(Contexts.arr[Contexts.curr]); }
+	if (_FromEnd == 0) {
+		int oldcurr = Contexts.currAwake;
+		Contexts.currAwake = (oldcurr+1) % Contexts.awakeSize;
+		swapcontext(Contexts.arr[Contexts.awake[oldcurr]], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
+		return;
+	}
+	_FromEnd = 0;
+	setcontext(Contexts.arr[Contexts.awake[Contexts.currAwake]]);
 }
 void endyield() {
-	for (size_t i = Contexts.curr; i < Contexts.size - 1; i++) {
+	for (size_t i = Contexts.awake[Contexts.currAwake]; i < Contexts.arrSize - 1; i++) {
 		Contexts.arr[i] = Contexts.arr[i+1];
 	}
-	Contexts.size--;
+	Contexts.arrSize--;
+	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
+		Contexts.awake[i] = Contexts.awake[i+1];
+	}
+	Contexts.awakeSize--;
 	_FromEnd = 1;
 	yield();
 }
-void manage_ending() {
-	getcontext(Contexts.manageEndingContext);
-	if (_PrepFlag == 1) return;
-	//TODO: if you had MAP_GROWSDOWN set in mmap, maybe continue to munmap until you touch the guard page for zero memory leaks
-	if (0 != Contexts.curr && -1 == munmap(Contexts.arr[Contexts.curr]->uc_stack.ss_sp, getpagesize())) {
-		printf("failed to munmap, error code is: \"%s\"\n", strerror(errno));
-		exit(1);
-	}
-	for (size_t i = Contexts.curr; i < Contexts.size - 1; i++) {
-		Contexts.arr[i] = Contexts.arr[i+1];
-	}
-	//printf("got till here in manage ending\n");
-	while (1) yield();
-	//printf("got after here in manage ending\n");
-}
 void initialize() {
-	Contexts.arr = (ucontext_t**) malloc(10 * sizeof(ucontext_t*));
+	Contexts.arr = (ucontext_t**) malloc(Contexts.arrCapacity * sizeof(ucontext_t*));
 	if (Contexts.arr == NULL) {
-		printf("malloc failed to allocate %zu bytes for Contexts.arr\n", 10 * sizeof(ucontext_t*));
+		printf("malloc failed to allocate %zu bytes for Contexts.arr\n", Contexts.arrCapacity * sizeof(ucontext_t*));
 		exit(1);
 	}
-	for (size_t i = 0; i < Contexts.capacity; i++) {
+	Contexts.awake = (int*) malloc(Contexts.awakeCapacity * sizeof(int));
+	if (Contexts.awake == NULL) {
+		printf("malloc failed to allocate %zu bytes for Contexts.awake\n", Contexts.awakeCapacity * sizeof(int));
+		exit(1);
+	}
+	Contexts.sleeping = (int*) malloc(Contexts.sleepingCapacity * sizeof(int));
+	if (Contexts.sleeping == NULL) {
+		printf("malloc failed to allocate %zu bytes for Contexts.sleeping\n", Contexts.sleepingCapacity * sizeof(int));
+		exit(1);
+	}
+	Contexts.fds = (struct pollfd*) malloc(Contexts.sleepingCapacity * sizeof(struct pollfd));
+	if (Contexts.fds == NULL) {
+		printf("malloc failed to allocate %zu bytes for Contexts.fds\n", Contexts.sleepingCapacity * sizeof(struct pollfd));
+		exit(1);
+	}
+	for (size_t i = 0; i < Contexts.arrCapacity; i++) {
 		Contexts.arr[i] = (ucontext_t*) malloc(sizeof(ucontext_t));
 		if (Contexts.arr[i] == NULL) {
 			printf("malloc failed to allocate %zu bytes for Contexts.arr[%zu]\n", sizeof(ucontext_t), i);
@@ -87,7 +110,6 @@ void initialize() {
 		}
 		Contexts.arr[i]->uc_link = 0;
 	}
-	//manage_ending();
 	Contexts.manageEndingContext = (ucontext_t*) malloc(sizeof(ucontext_t));
 	if (Contexts.manageEndingContext == NULL) {
 		printf("malloc failed to allocate %zu bytes for Contexts.manageEndingContext\n", sizeof(ucontext_t));
@@ -103,37 +125,78 @@ void initialize() {
 	Contexts.manageEndingContext->uc_stack.ss_flags = 0;
 	Contexts.manageEndingContext->uc_link = 0;
 	makecontext(Contexts.manageEndingContext, (void (*) (void)) endyield, 0);
-	if (_PrepFlag == 0) return;
 	for (size_t i = 1; i < 10; i++) {
 		Contexts.arr[i]->uc_link = Contexts.manageEndingContext;
 	}
-	_PrepFlag = 0;
-	Contexts.size++;
-	getcontext(Contexts.arr[0]);
-	yield();
+	Contexts.arrSize++;
+	Contexts.awake[0] = 0;
+	Contexts.awakeSize++;
+}
+void sleep_yield() {
+	int idx = Contexts.awake[Contexts.currAwake];
+	{
+		printf("Contexts.awake: {");
+		for (size_t i = 0; i < Contexts.awakeSize; i++) {
+			printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
+		}
+		printf("}\n");
+	}
+	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
+		Contexts.awake[i] = Contexts.awake[i+1];
+	}
+	Contexts.awakeSize--;
+	if (Contexts.awakeSize == Contexts.currAwake) {
+		// This is the case where we are sleep yielding the right-most element of the awake array
+		Contexts.currAwake--;
+	}
+	assert(Contexts.awakeSize > 0); //atleast the main loop must be awake so that it can yield again and again, where each yield will try to wake up asleep coroutines
+	{
+		printf("Contexts.awake: {");
+		for (size_t i = 0; i < Contexts.awakeSize; i++) {
+			printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
+		}
+		printf("}\n");
+	}
+	Contexts.sleeping[Contexts.nfds++] = idx;
+	// _FromEnd = 1; yield();// TODO: replace this hacky way with something else for true round-robbin -> FIXED (see below)
+	if (Contexts.awakeSize > 0) {
+		swapcontext(Contexts.arr[idx], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
+		return;
+	}
+	setcontext(Contexts.arr[Contexts.awake[Contexts.currAwake]]);
 }
 void counter(int id, int n) {
 	for (int i = 0; i < n; i++) {
 		printf("id: %d ; i: %d\n", id, i);
-		yield();
+		if (i == n - id) { printf("gonna sleep_yield!\n"); sleep_yield(); printf("WOW! Guess I learnt something new!\n"); }
+		else yield();
 	}
 	//printf("returning from counter with id: %d\n", id);
 }
+int setup_for_coroutine_add() {
+	assert(Contexts.arrSize < Contexts.arrCapacity);// TODO: please get dynamic arrays
+	int oldsize = Contexts.arrSize;
+	Contexts.awake[Contexts.awakeSize++] = Contexts.arrSize++;
+	errno = 0;
+	return oldsize;
+}
+
 int main() {
 	pid_t process_id = getpid();
 	//printf("process_id: %d\n", process_id);
 	initialize();
 	printf("Got till here\n");
-	int oldsize = Contexts.size;
-	Contexts.size++;
-	errno = 0;
-	makecontext(Contexts.arr[oldsize], (void (*) (void)) counter, 2, 1, 10);
+	{
+		int oldsize = setup_for_coroutine_add();
+		makecontext(Contexts.arr[oldsize], (void (*) (void)) counter, 2, 1, 10);
+	}
 	yield();
 	printf("back in main\n");
-	oldsize = Contexts.size;
-	Contexts.size++;
-	makecontext(Contexts.arr[oldsize], (void (*) (void)) counter, 2, 2, 10);
-	while (Contexts.size > 1) yield();
+	{
+		int oldsize = setup_for_coroutine_add();
+		makecontext(Contexts.arr[oldsize], (void (*) (void)) counter, 2, 2, 10);
+	}
+	int i = 0;
+	while (i++ < 20 && Contexts.arrSize > 1) { yield(); printf("I knew it!\n"); }
 	printf("main ended successfully\n");
 }
-
