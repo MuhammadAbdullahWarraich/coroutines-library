@@ -12,8 +12,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <stdbool.h>
+#include <time.h>
+#include "timeheap.h"
 
-
+// TODO: use variadic arguments to make a generic coroutine_add function
 // TODO: make arrays dynamic
 /* CODING CONVENTIONS
  * 1. function names of functions defined by me will be in snake case
@@ -22,7 +25,6 @@
  * 4. macros will be in all-caps
  * 5. anything prefixed by a underscore(_) should not be used outside the library(you can do this by not adding to header file of library or just add static in case of globals
  * */
-
 struct {
 	ucontext_t** arr;
 	size_t arrSize;
@@ -36,6 +38,7 @@ struct {
 	size_t sleepingCapacity;
 	size_t currAwake;
 	ucontext_t* manageEndingContext;
+	TimeHeap timeSleepers;
 } Contexts = {
 	NULL,
 	0,
@@ -48,7 +51,8 @@ struct {
 	0,
 	10,
 	0,
-	NULL
+	NULL,
+	{0}
 };
 int _FromEnd = 0;
 void wake(size_t i) {
@@ -71,8 +75,18 @@ void _try_to_wake_up_sleeping_coroutines() {
 		}
 	}
 }
+void _try_to_wake_up_timeupped() {
+	if (timeheap_isempty(&Contexts.timeSleepers)) return;
+	while (time(NULL) >= timeheap_toptime(&Contexts.timeSleepers)) {
+		int id = timeheap_pop(&Contexts.timeSleepers, NULL);
+		assert(Contexts.awakeSize < Contexts.awakeCapacity);
+		Contexts.awake[Contexts.awakeSize++] = id;
+		if (timeheap_isempty(&Contexts.timeSleepers)) break;// TODO: make life simpler by checking this in timeheap_toptime and returning ((time_t) -1) in this case
+	}
+}
 void yield() {
 	_try_to_wake_up_sleeping_coroutines();
+	_try_to_wake_up_timeupped();
 	if (_FromEnd == 0) {
 		int oldcurr = Contexts.currAwake;
 		Contexts.currAwake = (oldcurr+1) % Contexts.awakeSize;
@@ -164,13 +178,13 @@ void initialize() {
 void sleep_yield(struct pollfd pfd) {
 	int idx = Contexts.awake[Contexts.currAwake];
 	/*
-	{
-		printf("Contexts.awake: {");
-		for (size_t i = 0; i < Contexts.awakeSize; i++) {
-			printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
-		}
-		printf("}\n");
-	}*/
+	   {
+	   printf("Contexts.awake: {");
+	   for (size_t i = 0; i < Contexts.awakeSize; i++) {
+	   printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
+	   }
+	   printf("}\n");
+	   }*/
 	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
 		Contexts.awake[i] = Contexts.awake[i+1];
 	}
@@ -180,14 +194,14 @@ void sleep_yield(struct pollfd pfd) {
 		Contexts.currAwake--;
 	}
 	assert(Contexts.awakeSize > 0); //atleast the main loop must be awake so that it can yield again and again, where each yield will try to wake up asleep coroutines
-/*	{
+	/*	{
 		printf("Contexts.awake: {");
 		for (size_t i = 0; i < Contexts.awakeSize; i++) {
-			printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
+		printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
 		}
 		printf("}\n");
-	}
-	*/
+		}
+		*/
 	Contexts.sleeping[Contexts.nfds] = idx;
 	Contexts.fds[Contexts.nfds] = pfd;
 	Contexts.nfds++;
@@ -195,16 +209,16 @@ void sleep_yield(struct pollfd pfd) {
 }
 ssize_t coroutine_write(int fd, char* buf, size_t bufSize) {
 	struct pollfd pfd = {
-			.fd = fd,
-			.events = POLLOUT
+		.fd = fd,
+		.events = POLLOUT
 	};
 	sleep_yield(pfd);
 	return write(fd, buf, bufSize);
 }
 ssize_t coroutine_read(int fd, char* buf, size_t bufSize) {
 	struct pollfd pfd = {
-			.fd = fd,
-			.events = POLLIN
+		.fd = fd,
+		.events = POLLIN
 	};
 	sleep_yield(pfd);
 	return read(fd, buf, bufSize);
@@ -212,13 +226,14 @@ ssize_t coroutine_read(int fd, char* buf, size_t bufSize) {
 void counter(int id, int n) {
 	for (int i = 0; i < n; i++) {
 		printf("id: %d ; i: %d\n", id, i);
-	/*	if (i == n - id) {
+		yield();
+		/*	if (i == n - id) {
 			printf("gonna sleep_yield!\n");
 			struct pollfd pfd = {0};
 			sleep_yield(pfd);
 			printf("WOW! Guess I learnt something new, because this was supposed to never be printed!\n");
-		}
-		else yield();*/
+			}
+			else yield();*/
 	}
 	//printf("returning from counter with id: %d\n", id);
 }
@@ -230,7 +245,37 @@ int setup_for_coroutine_add() {
 	return oldsize;
 }
 void sleep_for(unsigned int seconds) {
-	// TODO
+	int idx = Contexts.awake[Contexts.currAwake];
+	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
+		Contexts.awake[i] = Contexts.awake[i+1];
+	}
+	Contexts.awakeSize--;
+	if (Contexts.awakeSize == Contexts.currAwake) {
+		// This is the case where we are time-sleeping the right-most element of the awake array
+		Contexts.currAwake--;
+	}
+	assert(Contexts.awakeSize > 0); //atleast the main loop must be awake so that it can yield again and again, where each yield will try to wake up asleep coroutines
+	timeheap_insert(&Contexts.timeSleepers, idx, seconds);
+	swapcontext(Contexts.arr[idx], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
+}
+void timesleeping_counter(int id, int n) {
+	for (int i = 0; i < n; i++) {
+		printf("id: %d ; i: %d\n", id, i);
+		sleep_for(1);
+	}
+}
+void coroutines_gather() {
+	while (Contexts.arrSize > 1) {
+		yield();
+	}
+}
+void test3() {
+	initialize();
+	{
+		int oldsize = setup_for_coroutine_add();
+		makecontext(Contexts.arr[oldsize], (void (*) (void)) timesleeping_counter, 2, 1, 10);
+	}
+	coroutines_gather();
 }
 void test1() {
 	pid_t process_id = getpid();
@@ -317,8 +362,6 @@ void tcp_client() {
 					"Ignoring long message in argument %d\n", j);
 			continue;
 		}
-
-		// if (write(sfd, messages[j], len) != len) {
 		if (coroutine_write(sfd, messages[j], len) != len) {
 			fprintf(stderr, "partial/failed write\n");
 			printf("partial/failed write\n");
@@ -352,8 +395,9 @@ void test2() {
 		yield();
 	}
 }
+
 int main() {
-	test2();
+	test3();
 
 	return 0;
 }

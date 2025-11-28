@@ -8,6 +8,6 @@ struct TimeHeap {
 typedef struct TimeHeap TimeHeap;
 #endif
 void timeheap_insert(TimeHeap* th, const int id, const unsigned int sleep_for);
-int timeheap_pop(TimeHeap* th, time_t *const expected);
 bool timeheap_isempty(TimeHeap* th);
-time_t timeheap_top(TimeHeap* th);
+time_t timeheap_toptime(TimeHeap* th);
+int timeheap_pop(TimeHeap* th, time_t *const expected);

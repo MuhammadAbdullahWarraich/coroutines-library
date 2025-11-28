@@ -180,7 +180,7 @@ void __test2_timeheap() {
 		print_heap(&th);
 	}
 }
-int main() {
+/*int main() {
 	__test2_timeheap();
 	return 0;
-}
+}*/
