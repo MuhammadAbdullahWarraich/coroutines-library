@@ -221,7 +221,7 @@ void sleep_yield(struct pollfd pfd) {
 	Contexts.nfds++;
 	swapcontext(Contexts.arr[idx], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
 }
-ssize_t coroutine_write(int fd, char* buf, size_t bufSize) {
+ssize_t coroutine_write(int fd, const char* buf, size_t bufSize) {
 	struct pollfd pfd = {
 		.fd = fd,
 		.events = POLLOUT
@@ -229,7 +229,7 @@ ssize_t coroutine_write(int fd, char* buf, size_t bufSize) {
 	sleep_yield(pfd);
 	return write(fd, buf, bufSize);
 }
-ssize_t coroutine_read(int fd, char* buf, size_t bufSize) {
+ssize_t coroutine_read(int fd, void* buf, size_t bufSize) {
 	struct pollfd pfd = {
 		.fd = fd,
 		.events = POLLIN
@@ -295,7 +295,7 @@ void tcp_client() {
 	s = getaddrinfo("127.0.0.1", "42069", &hints, &result);
 	if (s != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-		exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);// helpful note for future: EXIT_FAILURE is a constant int with value 1 
 	}
 
 	/* getaddrinfo() returns a list of address structures.

@@ -1,5 +1,5 @@
-#include "coroutines.h"
 #include <stdio.h>
+#include "coroutines.h"
 struct CounterArgs {
 	int id;
 	int n;
