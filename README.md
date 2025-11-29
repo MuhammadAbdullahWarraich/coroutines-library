@@ -6,14 +6,14 @@ Coroutines implementations(stackful &amp; stackless) in C
 - https://stackoverflow.com/questions/67868071/how-to-know-which-version-of-c-language-i-am-using
 - https://github.com/Apple-FOSS-Mirror/Libc/blob/2ca2ae74647714acfc18674c3114b1a5d3325d7d/x86_64/gen/makecontext.c#L98-L107
 ## Done
-- stackful coroutines using ucontext.h
-	- coroutines using yield
+- stackful coroutines using ucontext.h(includes yield, sleep, async read, and async write operations)
 ## Todo
 - stackful coroutines using ucontext.h
 	- remove memory leakage
 	- make the code cleaner
    	- some arrays are not dynamic yet; make them dynamic
-   	- separate tests
+   	- write test for async read/write
+	- make a automated test orchestrator that executes and validates all tests automatically with summary
    	- compile to library using makefile
 - stackful coroutines using inline assembly
 	- all features
