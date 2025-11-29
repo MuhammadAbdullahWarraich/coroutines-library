@@ -63,6 +63,7 @@ void writer(void* args) {
 			}
 			idx += n;
 		}
+		coroutine_sleep(1);
 	}
 }
 void _test_pipe_size_limit() {
