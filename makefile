@@ -1,9 +1,11 @@
-lib_test: main.o timeheap.o
-	gcc main.o timeheap.o -o t
-	./t
-main.o:
-	gcc -g -c main.c
-timeheap.o:
-	gcc -g -c timeheap.c
+VPATH = tests/t1:tests/t2
+t1: coroutines.o test_yield.o timeheap.o
+	gcc coroutines.o timeheap.o test_yield.o -o t1
+	./t1
+t2: coroutines.o test_sleep.o timeheap.o
+	gcc coroutines.o timeheap.o test_sleep.o -o t2
+	./t2
+%.o: %.c
+	gcc -g -c $<
 clean:
-	rm timeheap.o main.o t
+	rm *.o t1 t2
