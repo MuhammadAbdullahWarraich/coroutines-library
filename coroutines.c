@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include "timeheap.h"
 
-// TODO: make arrays dynamic
 /* CODING CONVENTIONS
  * 1. function names of functions defined by me will be in snake case
  * 2. attributes of structs & local variables will have camel case
@@ -21,6 +20,8 @@
  * 4. macros will be in all-caps
  * 5. anything prefixed by a underscore(_) should not be used outside the library(you can do this by not adding to header file of library or just add static in case of globals
  * */
+#define MAXINADVANCESTACKBOOKINGS 2
+#define MAXCAPACITY 2
 struct {
 	ucontext_t** arr;
 	size_t arrSize;
@@ -40,9 +41,9 @@ struct {
 } Contexts = {
 	NULL,
 	0,
-	1,
-	2,
-	2,
+	MAXCAPACITY,
+	MAXINADVANCESTACKBOOKINGS,
+	MAXINADVANCESTACKBOOKINGS,
 	NULL,
 	0,
 	NULL,
@@ -79,7 +80,7 @@ void _try_to_wake_up_timeupped() {
 	while (time(NULL) >= timeheap_toptime(&Contexts.timeSleepers)) {
 		int id = timeheap_pop(&Contexts.timeSleepers, NULL);
 		Contexts.awake[Contexts.awakeSize++] = id;
-		if (timeheap_isempty(&Contexts.timeSleepers)) break;// TODO: make life simpler by checking this in timeheap_toptime and returning ((time_t) -1) in this case
+		if (timeheap_isempty(&Contexts.timeSleepers)) break;
 	}
 }
 void coroutine_yield() {
@@ -108,7 +109,7 @@ void _endyield() {
 	coroutine_yield();
 }
 void _enlarge_Contexts_arrays() {
-	printf("_enlarge_Contexts_arrays got called!\n");
+//	printf("_enlarge_Contexts_arrays got called!\n");
 	assert(Contexts.manageEndingContext != NULL);
 	// if Contexts.manageEndingContext is null, initialize hasn't been called or Contexts has been corrupted at some point
 	const size_t newMaxCapacity = 2 * Contexts.maxCapacity;
@@ -166,7 +167,7 @@ void _enlarge_Contexts_arrays() {
 	Contexts.dead = newDead;
 }
 void _increase_lazy_capacity() {
-	printf("_increase_lazy_capacity got called!\n");
+//	printf("_increase_lazy_capacity got called!\n");
 	assert(Contexts.deadSize == 0 && Contexts.lazyCapacity == Contexts.arrSize);
 	if (!(Contexts.lazyCapacity + Contexts.maxInAdvanceStackBookings <= Contexts.maxCapacity)) _enlarge_Contexts_arrays();
 	for (size_t i = 0; i < Contexts.maxInAdvanceStackBookings; i++) {
@@ -256,20 +257,6 @@ void coroutines_initialize() {
 			Contexts.arr[i]->uc_stack.ss_size = 1024 * getpagesize();
 			Contexts.arr[i]->uc_stack.ss_flags = 0;
 		}
-		/*
-		if (i > 0) {
-			Contexts.arr[i]->uc_link = (ucontext_t*) malloc(sizeof(ucontext_t));
-			if (Contexts.arr[i]->uc_link == NULL) {
-				printf("malloc failed to allocate %zu bytes for Contexts.arr[%zu]->uc_link\n", sizeof(ucontext_t), i);
-				exit(1);
-			}
-			getcontext(Contexts.arr[i]->uc_link);
-			Contexts.arr[i]->uc_link->uc_stack.ss_sp = Contexts.arr[i]->uc_stack.ss_sp;
-			Contexts.arr[i]->uc_link->uc_stack.ss_size = Contexts.arr[i]->uc_stack.ss_size;
-			Contexts.arr[i]->uc_link->uc_stack.ss_flags = Contexts.arr[i]->uc_stack.ss_flags;
-			Contexts.arr[i]->uc_link->uc_link = 0;
-			makecontext(Contexts.arr[i]->uc_link, (void (*) (void)) _endyield, 0);
-		}*/
 	}
 	Contexts.manageEndingContext = (ucontext_t*) malloc(sizeof(ucontext_t));
 	if (Contexts.manageEndingContext == NULL) {
@@ -293,16 +280,8 @@ void coroutines_initialize() {
 	Contexts.awake[0] = 0;
 	Contexts.awakeSize++;
 }
-void sleep_yield(struct pollfd pfd) {
+void _sleep_yield(struct pollfd pfd) {
 	int idx = Contexts.awake[Contexts.currAwake];
-	/*
-	   {
-	   printf("Contexts.awake: {");
-	   for (size_t i = 0; i < Contexts.awakeSize; i++) {
-	   printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
-	   }
-	   printf("}\n");
-	   }*/
 	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
 		Contexts.awake[i] = Contexts.awake[i+1];
 	}
@@ -312,14 +291,6 @@ void sleep_yield(struct pollfd pfd) {
 		Contexts.currAwake--;
 	}
 	assert(Contexts.awakeSize > 0); //atleast the main loop must be awake so that it can yield again and again, where each yield will try to wake up asleep coroutines
-	/*	{
-		printf("Contexts.awake: {");
-		for (size_t i = 0; i < Contexts.awakeSize; i++) {
-		printf("%d%s", Contexts.awake[i], i+1 == Contexts.awakeSize ? "" : ", ");
-		}
-		printf("}\n");
-		}
-		*/
 	Contexts.sleeping[Contexts.nfds] = idx;
 	Contexts.fds[Contexts.nfds] = pfd;
 	Contexts.nfds++;
@@ -330,7 +301,7 @@ ssize_t coroutine_write(int fd, const char* buf, size_t bufSize) {
 		.fd = fd,
 		.events = POLLOUT
 	};
-	sleep_yield(pfd);
+	_sleep_yield(pfd);
 	return write(fd, buf, bufSize);
 }
 ssize_t coroutine_read(int fd, void* buf, size_t bufSize) {
@@ -338,7 +309,7 @@ ssize_t coroutine_read(int fd, void* buf, size_t bufSize) {
 		.fd = fd,
 		.events = POLLIN
 	};
-	sleep_yield(pfd);
+	_sleep_yield(pfd);
 	return read(fd, buf, bufSize);
 }
 void coroutine_sleep(unsigned int seconds) {
@@ -355,14 +326,33 @@ void coroutine_sleep(unsigned int seconds) {
 	timeheap_insert(&Contexts.timeSleepers, idx, seconds);
 	swapcontext(Contexts.arr[idx], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
 }
+void coroutines_cleanup() {
+	//assert(Contexts.timeSleepers.size==0 && Contexts.awakeSize==1 && Contexts.nfds==0 &&  Contexts.arrSize-Contexts.deadSize == 1);
+	assert(Contexts.currAwake == 0);
+	for (size_t i = 1; i < Contexts.lazyCapacity; i++) {
+		if (-1 == munmap(Contexts.arr[i]->uc_stack.ss_sp, Contexts.arr[i]->uc_stack.ss_size)) {
+			printf("Failed to munmap. Error is: \"%s\"\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	}
+	free(Contexts.arr);
+	free(Contexts.awake);
+	free(Contexts.sleeping);
+	free(Contexts.fds);
+	free(Contexts.dead);
+	Contexts.arr = NULL;
+	Contexts.awake = NULL;
+	Contexts.sleeping = NULL;
+	Contexts.fds = NULL;
+	Contexts.dead = NULL;
+	Contexts.arrSize = Contexts.awakeSize = Contexts.nfds = Contexts.deadSize = 0;
+	Contexts.maxCapacity = MAXCAPACITY;
+	Contexts.maxInAdvanceStackBookings = MAXINADVANCESTACKBOOKINGS;
+	Contexts.lazyCapacity = MAXINADVANCESTACKBOOKINGS;
+	timeheap_cleanup(&Contexts.timeSleepers);
+}
 void coroutines_gather() {
 	while (Contexts.arrSize - Contexts.deadSize > 1) {
 		coroutine_yield();
 	}
 }
-
-/*int main() {
-	test1();
-
-	return 0;
-}*/

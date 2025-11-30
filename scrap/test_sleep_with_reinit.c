@@ -16,14 +16,27 @@ void sleeping_counter(void* args) {
 		coroutine_sleep(sleep_time);
 	}
 }
+void sleeper() {
+	printf("before sleep\n");
+	coroutine_sleep(1);
+	printf("after sleep\n");
+}
 void test() {
-	CounterArgs args = {
+	CounterArgs args1 = {
 		.id = 1,
-		.n = 10,
+		.n = 5,
 		.sleep_time = 1
 	};
 	coroutines_initialize();
-	coroutine_add((void (*) (void)) sleeping_counter, 1, (void*) &args);
+	coroutine_add((void (*) (void)) sleeper, 0, NULL);
+	coroutine_add((void (*) (void)) sleeper, 0, NULL);
+	coroutine_add((void (*) (void)) sleeper, 0, NULL);
+	coroutine_add((void (*) (void)) sleeper, 0, NULL);
+	coroutine_yield();
+	coroutines_cleanup();
+	printf("got till here\n");
+	coroutines_initialize();
+	coroutine_add((void (*) (void)) sleeping_counter, 1, (void*) &args1);
 	coroutines_gather();
 }
 int main() {

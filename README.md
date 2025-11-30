@@ -10,9 +10,6 @@ Coroutines implementations(stackful &amp; stackless) in C
 ## Todo
 - stackful coroutines using ucontext.h
 	- remove memory leakage
-	- make the code cleaner
-   	- some arrays are not dynamic yet; make them dynamic
-   	- write test for async read/write
 	- make a automated test orchestrator that executes and validates all tests automatically with summary
    	- compile to library using makefile
 - stackful coroutines using inline assembly
