@@ -29,8 +29,6 @@ Build using the provided Makefile:
 make
 ```
 
-> Note: The Makefile currently compiles tests and examples. Future versions will support building a static/shared library.
-
 ## Usage
 
 Include the libcoroutines.a file in your project directory(or maybe /usr/lib), include the header file in your project, and include the following directive in your C project:
