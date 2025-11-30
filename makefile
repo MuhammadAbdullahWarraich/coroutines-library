@@ -1,14 +1,16 @@
 VPATH = tests/e2e/t1:tests/e2e/t2:tests/e2e/t3:tests/timeheap-tests/
-t1: coroutines.o test_yield.o timeheap.o
-	gcc coroutines.o timeheap.o test_yield.o -o t1
+lib: coroutines.o timeheap.o
+	ar -cvq libcoroutines.a coroutines.o timeheap.o
+t1: lib test_yield.o
+	gcc -o t1 test_yield.o -L./ -lcoroutines
 	./t1
-t2: coroutines.o test_sleep.o timeheap.o
-	gcc coroutines.o timeheap.o test_sleep.o -o t2
+t2: lib test_sleep.o
+	gcc -o t2 test_sleep.o -L./ -lcoroutines
 	./t2
-t3: coroutines.o test_rw.o timeheap.o
-	gcc coroutines.o timeheap.o test_rw.o -o t3
+t3: lib test_rw.o
+	gcc -o t3 test_rw.o -L./ -lcoroutines
 	./t3
-timeheap_tests: th_test1.o th_test2.o timeheap.o
+timeheap_tests: timeheap.o th_test1.o th_test2.o
 	gcc th_test1.o timeheap.o -o th_test1
 	./th_test1
 	gcc th_test2.o timeheap.o -o th_test2
@@ -17,4 +19,4 @@ timeheap_tests: th_test1.o th_test2.o timeheap.o
 %.o: %.c
 	gcc -g -c $<
 clean:
-	rm *.o t1 t2 t3
+	rm *.o *.a t1 t2 t3
