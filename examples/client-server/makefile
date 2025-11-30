@@ -1,4 +1,6 @@
 VPATH = ../../
+all: client echoserver
+
 client: client.o timeheap.o coroutines.o
 	gcc client.o timeheap.o coroutines.o -o client
 echoserver: echoserver.o timeheap.o coroutines.o
