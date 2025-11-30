@@ -12,7 +12,6 @@ A lightweight **coroutines library** in C providing both **stackful** and **stac
   - Stackful coroutines using inline assembly
   - Stackless coroutines using callbacks
   - Automated test orchestrator
-  - Dockerized library build
 
 ## Installation
 
