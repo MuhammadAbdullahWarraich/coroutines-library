@@ -94,9 +94,9 @@ void test() {
 		.id = 2,
 		.fd = fds[1]
 	};
-	coroutine_add((void (*) (void)) reader, 1, (void *) &reader_args);
+	coroutine_add((void (*) (void)) reader, (void *) &reader_args);
 	coroutine_yield();
-	coroutine_add((void (*) (void)) writer, 1, (void *) &writer_args);
+	coroutine_add((void (*) (void)) writer, (void *) &writer_args);
 	coroutines_gather();
 }
 int main() {

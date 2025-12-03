@@ -96,7 +96,7 @@ int main() {
 			.client_ip = client_ip,
 			.client_port = client_port
 		};
-		coroutine_add((void (*) (void))handle_client, 1, (void*) &hc_args);
+		coroutine_add((void (*) (void))handle_client, (void*) &hc_args);
 		coroutine_yield();
 	}
 	return 0;

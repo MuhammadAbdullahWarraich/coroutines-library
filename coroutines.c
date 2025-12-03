@@ -206,8 +206,10 @@ int _setup_for_coroutine_add() {
 	errno = 0;
 	return idx;
 }
-void coroutine_add(void (*func) (void), const int argcount, void* arg) {
+void coroutine_add(void (*func) (void), void* arg) {
 	int idx = _setup_for_coroutine_add();
+	int argcount = 0;
+	if (arg != NULL) argcount = 1;
 	assert(argcount == 0 || argcount == 1);
 	if (argcount == 0) makecontext(Contexts.arr[idx], (void (*) (void)) func, argcount);
 	else makecontext(Contexts.arr[idx], (void (*) (void)) func, argcount, (intptr_t) arg);

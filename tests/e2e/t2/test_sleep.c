@@ -23,7 +23,7 @@ void test() {
 		.sleep_time = 1
 	};
 	coroutines_initialize();
-	coroutine_add((void (*) (void)) sleeping_counter, 1, (void*) &args1);
+	coroutine_add((void (*) (void)) sleeping_counter, (void*) &args1);
 	coroutines_gather();
 	coroutines_cleanup();// unnecessary, because the memory will be freed with the end of the process anyways and we are almost at the end of the process
 }

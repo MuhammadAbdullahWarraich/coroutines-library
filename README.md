@@ -72,9 +72,9 @@ int main() {
                 .id = 3,
                 .n = 5
         };
-        coroutine_add((void (*) (void)) counter, 1, (void *) &c1_args);
-        coroutine_add((void (*) (void)) counter, 1, (void *) &c2_args);
-        coroutine_add((void (*) (void)) counter, 1, (void *) &c3_args);
+        coroutine_add((void (*) (void)) counter, (void *) &c1_args);
+        coroutine_add((void (*) (void)) counter, (void *) &c2_args);
+        coroutine_add((void (*) (void)) counter, (void *) &c3_args);
         coroutines_gather();
         return 0;
 }
@@ -85,7 +85,7 @@ Refer to the `examples/` directory for full client-server usage and test cases. 
 ## API Overview
 
 * `void coroutines_initialize();`: Initializes the coroutine system.
-* `void coroutine_add(void (*func) (void), const int argcount, void* arg);`: Creates a new coroutine. `argcount` can be either 0(`arg` is `NULL`) or 1(for multiple arguments, use structs(see above example)).
+* `void coroutine_add(void (*func) (void), void* arg);`: Creates a new coroutine.
 * `void coroutine_yield();`: Suspends the current coroutine and resumes another.
 * `void coroutine_sleep(unsigned int seconds);`: Pauses the coroutine for the specified seconds.
 * `ssize_t coroutine_read(int fd, void* buf, size_t bufSize);`: Non-blocking read.

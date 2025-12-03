@@ -101,8 +101,8 @@ int main() {
 	TCPClientArgs args1 = { .id = 1 };
 	TCPClientArgs args2 = { .id = 2 };
 	coroutines_initialize();
-	coroutine_add((void (*) (void))tcp_client, 1, (void*) &args1);
-	coroutine_add((void (*) (void))tcp_client, 1, (void*) &args2);
+	coroutine_add((void (*) (void))tcp_client, (void*) &args1);
+	coroutine_add((void (*) (void))tcp_client, (void*) &args2);
 	coroutines_gather();
 	coroutines_cleanup();// unnecessary here, because the memory will be freed with the end of the process anyways and we are almost at the end of the process
 	return 0;
