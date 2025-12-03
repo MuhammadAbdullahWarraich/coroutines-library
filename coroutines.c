@@ -38,6 +38,8 @@ struct {
 	size_t currAwake;
 	ucontext_t* manageEndingContext;
 	TimeHeap timeSleepers;
+	int mainAwaiting;
+	int* awaitedBy;
 } Contexts = {
 	NULL,
 	0,
@@ -53,7 +55,9 @@ struct {
 	0,
 	0,
 	NULL,
-	{0}
+	{0},
+	0,
+	NULL
 };
 int _FromEnd = 0;
 void _wake(size_t i) {
@@ -96,7 +100,12 @@ void coroutine_yield() {
 	setcontext(Contexts.arr[Contexts.awake[Contexts.currAwake]]);
 }
 void _endyield() {
-	Contexts.dead[Contexts.deadSize++] = Contexts.awake[Contexts.currAwake];
+	int idx = Contexts.awake[Contexts.currAwake];
+	if (Contexts.awaitedBy[idx] != -1) {
+		if (Contexts.awaitedBy[idx] == 0) Contexts.mainAwaiting = 0;
+		else Contexts.awake[Contexts.awakeSize++] = Contexts.awaitedBy[idx];
+	}
+	Contexts.dead[Contexts.deadSize++] = idx;
 	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
 		Contexts.awake[i] = Contexts.awake[i+1];
 	}
@@ -125,6 +134,16 @@ void _enlarge_Contexts_arrays() {
 	}
 	free(Contexts.arr);
 	Contexts.arr = newarr;
+	int* newAwaitedBy = (int*) malloc(newMaxCapacity * sizeof(int));
+	if (newAwaitedBy == NULL) {
+		printf("malloc failed to allocate %zu bytes for Contexts.awaitedBy\n", newMaxCapacity * sizeof(int));
+		exit(1);
+	}
+	for (size_t i = 0; i < oldMaxCapacity; i++) {
+		newAwaitedBy[i] = Contexts.awaitedBy[i];
+	}
+	free(Contexts.awaitedBy);
+	Contexts.awaitedBy = newAwaitedBy;
 	int* newAwake = (int*) malloc(newMaxCapacity * sizeof(int));
 	if (newAwake == NULL) {
 		printf("malloc failed to allocate %zu bytes for Contexts.awake\n", newMaxCapacity * sizeof(int));
@@ -206,13 +225,36 @@ int _setup_for_coroutine_add() {
 	errno = 0;
 	return idx;
 }
-void coroutine_add(void (*func) (void), void* arg) {
-	int idx = _setup_for_coroutine_add();
+void _register_coroutine(void (*func) (void), void* arg, int awaitedBy) {
+	const int idx = _setup_for_coroutine_add();
+	assert(awaitedBy == -1 || (awaitedBy >= 0 && awaitedBy < Contexts.lazyCapacity));
+	Contexts.awaitedBy[idx] = awaitedBy;
 	int argcount = 0;
 	if (arg != NULL) argcount = 1;
 	assert(argcount == 0 || argcount == 1);
 	if (argcount == 0) makecontext(Contexts.arr[idx], (void (*) (void)) func, argcount);
 	else makecontext(Contexts.arr[idx], (void (*) (void)) func, argcount, (intptr_t) arg);
+}
+void coroutine_add(void (*func) (void), void* arg) {
+	_register_coroutine(func, arg, -1);
+}
+void coroutine_await(void (*func) (void), void* arg) {
+	int idx = Contexts.awake[Contexts.currAwake];
+	_register_coroutine(func, arg, idx);
+	if (idx == 0) {
+		Contexts.mainAwaiting = 1;
+		while (Contexts.mainAwaiting == 1) coroutine_yield();
+	} else {
+		for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
+			Contexts.awake[i] = Contexts.awake[i+1];
+		}
+		Contexts.awakeSize--;
+		if (Contexts.currAwake == Contexts.awakeSize) {
+			Contexts.currAwake--;
+		}
+		assert(Contexts.awakeSize > 0);
+		swapcontext(Contexts.arr[idx], Contexts.arr[Contexts.awake[Contexts.currAwake]]);
+	}
 }
 void coroutines_initialize() {
 	assert(Contexts.lazyCapacity == Contexts.maxInAdvanceStackBookings);
@@ -220,6 +262,11 @@ void coroutines_initialize() {
 	Contexts.arr = (ucontext_t**) malloc(Contexts.maxCapacity * sizeof(ucontext_t*));
 	if (Contexts.arr == NULL) {
 		printf("malloc failed to allocate %zu bytes for Contexts.arr\n", Contexts.maxCapacity * sizeof(ucontext_t*));
+		exit(1);
+	}
+	Contexts.awaitedBy = (int*) malloc(Contexts.maxCapacity * sizeof(int));
+	if (Contexts.awaitedBy == NULL) {
+		printf("malloc failed to allocate %zu bytes for Contexts.awaitedBy\n", Contexts.maxCapacity * sizeof(int));
 		exit(1);
 	}
 	Contexts.awake = (int*) malloc(Contexts.maxCapacity * sizeof(int));
@@ -316,6 +363,7 @@ ssize_t coroutine_read(int fd, void* buf, size_t bufSize) {
 }
 void coroutine_sleep(unsigned int seconds) {
 	int idx = Contexts.awake[Contexts.currAwake];
+	assert(idx != 0);// main coroutine isn't allowed to sleep
 	for (size_t i = Contexts.currAwake; i < -1 + Contexts.awakeSize; i++) {
 		Contexts.awake[i] = Contexts.awake[i+1];
 	}
@@ -330,7 +378,7 @@ void coroutine_sleep(unsigned int seconds) {
 }
 void coroutines_cleanup() {
 	//assert(Contexts.timeSleepers.size==0 && Contexts.awakeSize==1 && Contexts.nfds==0 &&  Contexts.arrSize-Contexts.deadSize == 1);
-	assert(Contexts.currAwake == 0);
+	assert(Contexts.awake[Contexts.currAwake] == 0);
 	for (size_t i = 1; i < Contexts.lazyCapacity; i++) {
 		if (-1 == munmap(Contexts.arr[i]->uc_stack.ss_sp, Contexts.arr[i]->uc_stack.ss_size)) {
 			printf("Failed to munmap. Error is: \"%s\"\n", strerror(errno));
@@ -338,6 +386,7 @@ void coroutines_cleanup() {
 		}
 	}
 	free(Contexts.arr);
+	free(Contexts.awaitedBy);
 	free(Contexts.awake);
 	free(Contexts.sleeping);
 	free(Contexts.fds);
@@ -354,6 +403,7 @@ void coroutines_cleanup() {
 	timeheap_cleanup(&Contexts.timeSleepers);
 }
 void coroutines_gather() {
+	assert(Contexts.awake[Contexts.currAwake] == 0);
 	while (Contexts.arrSize - Contexts.deadSize > 1) {
 		coroutine_yield();
 	}

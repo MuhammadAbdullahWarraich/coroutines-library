@@ -8,6 +8,7 @@ A lightweight **coroutines library** in C providing both **stackful** and **stac
   - Yield execution between coroutines
   - Sleep functionality
   - Async read and write operations
+  - Await functionality
 - **Planned Features**
   - Stackful coroutines using inline assembly
   - Stackless coroutines using callbacks
@@ -83,6 +84,7 @@ Refer to the `examples/` directory for full client-server usage and test cases. 
 
 * `void coroutines_initialize();`: Initializes the coroutine system.
 * `void coroutine_add(void (*func) (void), void* arg);`: Creates a new coroutine.
+* `void coroutine_await(void (*func) (void), void* arg);`: Make a call to `func` as a new coroutine, and pause current coroutine until it finishes. See `tests/t4/test_await.c` for example usage.
 * `void coroutine_yield();`: Suspends the current coroutine and resumes another.
 * `void coroutine_sleep(unsigned int seconds);`: Pauses the coroutine for the specified seconds.
 * `ssize_t coroutine_read(int fd, void* buf, size_t bufSize);`: Non-blocking read.
