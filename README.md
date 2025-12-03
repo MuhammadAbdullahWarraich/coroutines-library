@@ -12,7 +12,6 @@ A lightweight **coroutines library** in C providing both **stackful** and **stac
   - Stackful coroutines using inline assembly
   - Stackless coroutines using callbacks
   - Automated test orchestrator
-  - Dockerized library build
 
 ## Installation
 
@@ -28,8 +27,6 @@ Build using the provided Makefile:
 ```bash
 make
 ```
-
-> Note: The Makefile currently compiles tests and examples. Future versions will support building a static/shared library.
 
 ## Usage
 
