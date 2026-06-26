@@ -60,6 +60,16 @@ struct {
 	NULL
 };
 int _FromEnd = 0;
+
+void _wake(size_t i) {
+	assert(i < Contexts.nfds);
+	int idx = Contexts.sleeping[i];
+	Contexts.sleeping[i] = Contexts.sleeping[Contexts.nfds-1];
+	Contexts.fds[i] = Contexts.fds[Contexts.nfds-1];
+	Contexts.nfds--;
+	Contexts.awake[Contexts.awakeSize++] = idx;
+}
+/*
 void _wake(size_t i) {
 	assert(i < Contexts.nfds);
 	int idx = Contexts.sleeping[i];
@@ -70,6 +80,7 @@ void _wake(size_t i) {
 	Contexts.nfds--;
 	Contexts.awake[Contexts.awakeSize++] = idx;
 }
+*/
 void _try_to_wake_up_sleeping_coroutines() {
 	// right now, it only works for waking those that sleep_yield on reading from a fd
 	int state = poll(Contexts.fds, Contexts.nfds, 0);
